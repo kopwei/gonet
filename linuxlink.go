@@ -13,25 +13,18 @@ import (
 
 // LinuxLink ...
 type LinuxLink struct {
-	ifc *net.Interface
-}
-
-func (linuxLink *LinuxLink) getNetLink() (netlink.Link, error) {
-	netlk, err := netlink.LinkByName(linuxLink.ifc.Name)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get the netlink with name %s due to %s",
-			linuxLink.ifc.Name, err.Error())
-	}
-	return netlk, err
+	link netlink.Link
+	//ifc  *net.Interface
 }
 
 // Up is used to set the link to up state
 func (linuxLink *LinuxLink) Up() error {
-	netlk, err := linuxLink.getNetLink()
-	if err != nil {
-		return fmt.Errorf("Error occurred in fetching net link due to %s", err.Error())
-	}
-	return netlink.LinkSetUp(netlk)
+	return netlink.LinkSetUp(linuxLink.link)
+}
+
+// Down is used to set the link to up state
+func (linuxLink *LinuxLink) Down() error {
+	return netlink.LinkSetDown(linuxLink.link)
 }
 
 // SetName is used to set the link to up state
@@ -39,22 +32,31 @@ func (linuxLink *LinuxLink) SetName(name string) error {
 	if name == "" {
 		return fmt.Errorf("The link name cannot be empty")
 	}
-	netlk, err := linuxLink.getNetLink()
-	if err != nil {
-		return fmt.Errorf("Error occurred in fetching net link due to %s", err.Error())
+	return netlink.LinkSetName(linuxLink.link, name)
+}
+
+// Ifconfig is used to configure the basic ip of the link
+func (linuxLink *LinuxLink) Ifconfig(ip net.IP, netmask net.IPMask) error {
+	if ip == nil {
+		return fmt.Errorf("Failed to configure the IP since the ip is not valid")
 	}
-	return netlink.LinkSetName(netlk, name)
+	if netmask == nil {
+		netmask = ip.DefaultMask()
+	}
+	ipNet := &net.IPNet{IP: ip, Mask: netmask}
+	netAddr := &netlink.Addr{IPNet: ipNet}
+	return netlink.AddrAdd(linuxLink.link, netAddr)
 }
 
 // LinuxLinkByName is used to get the link object
 func LinuxLinkByName(name string) (*LinuxLink, error) {
-	ifc, err := net.InterfaceByName(name)
+	link, err := netlink.LinkByName(name)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to retrieve interface via name %s due to %s",
+		return nil, fmt.Errorf("Failed to retrieve link via name %s due to %s",
 			name, err.Error())
 
 	}
-	return &LinuxLink{ifc: ifc}, err
+	return &LinuxLink{ /*ifc: ifc, */ link: link}, err
 }
 
 // DeleteLink is used to delete
@@ -70,39 +72,50 @@ func DeleteLink(name string) error {
 }
 
 // PutLinkIntoNetNs is used to put a network interface into netns
-func PutLinkIntoNetNs(link *LinuxLink, nspid int, newName string) error {
+func PutLinkIntoNetNs(link *LinuxLink, nspid int, newName string, ipaddr *net.IPNet) error {
 	if newName == "" {
 		return fmt.Errorf("The new name cannot be empty")
+	}
+
+	newNsHandle, err := netns.GetFromPid(nspid)
+	if err != nil {
+		return fmt.Errorf("Failed to get the net ns for pid %d due to %s", nspid, err.Error())
+	}
+
+	return putLinkIntoNetNS(link, newNsHandle, newName, ipaddr)
+}
+
+func putLinkIntoNetNS(link *LinuxLink, nsHandle netns.NsHandle, newName string, ipaddr *net.IPNet) error {
+	err := link.Down()
+	if err != nil {
+		return fmt.Errorf("Failed to put link down due to %s", err.Error())
 	}
 	currentNetNs, err := netns.Get()
 	defer netns.Setns(currentNetNs, syscall.CLONE_NEWNET)
 	if err != nil {
 		return fmt.Errorf("Failed to get current net ns due to %s", err.Error())
 	}
-	newNetNs, err := netns.GetFromPid(nspid)
-	if err != nil {
-		return fmt.Errorf("Failed to get the net ns for pid %d due to %s", nspid, err.Error())
-	}
-
-	return putLinkIntoNetNS(link, newNetNs, newName)
-}
-
-func putLinkIntoNetNS(link *LinuxLink, nsHandle netns.NsHandle, newName string) error {
-	err := netns.Set(nsHandle)
+	err = netlink.LinkSetNsFd(link.link, int(nsHandle))
 	if err != nil {
 		return fmt.Errorf("Failed to set net ns %d due to %s", nsHandle, err.Error())
 	}
-	err = link.Up()
+	err = netns.Set(nsHandle)
 	if err != nil {
-		return fmt.Errorf("Failed to set the link up due to %s", err.Error())
+		return fmt.Errorf("Failed to switch to set net ns %d due to %s", nsHandle, err.Error())
 	}
-	if newName != link.ifc.Name {
+	if newName != link.link.Attrs().Name {
 		err = link.SetName(newName)
 		if err != nil {
 			return fmt.Errorf("Failed to set the link to new name %s due to %s",
 				newName, err.Error())
 		}
 	}
-	return nil
 
+	if ipaddr != nil {
+		err = link.Ifconfig(ipaddr.IP, ipaddr.Mask)
+		if err != nil {
+			return fmt.Errorf("Failed to configure the links ip due to %s", err.Error())
+		}
+	}
+	return link.Up()
 }
