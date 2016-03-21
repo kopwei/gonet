@@ -9,7 +9,7 @@ import (
 
 // VethLinkPair is the interface of linux veth link pair
 type VethLinkPair interface {
-	SetPeerIntoNetNS(netnspid int, newName string, ipaddr *net.IPNet) error
+	SetPeerIntoNetNS(netnspid int, newName string, ip net.IP, mask net.IPMask) error
 }
 
 type vethLinkPair struct {
@@ -40,6 +40,6 @@ func NewVethLinkPair(ifcName, peerName string) (VethLinkPair, error) {
 }
 
 // SetPeerIntoNetNS is used to put the peer into a specific netns
-func (veth *vethLinkPair) SetPeerIntoNetNS(netnspid int, newName string, ipaddr *net.IPNet) error {
-	return veth.PeerLink.SetToNetNs(netnspid, newName, ipaddr)
+func (veth *vethLinkPair) SetPeerIntoNetNS(netnspid int, newName string, ip net.IP, mask net.IPMask) error {
+	return veth.PeerLink.SetToNetNs(netnspid, newName, ip, mask)
 }

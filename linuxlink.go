@@ -16,8 +16,8 @@ type LinuxLink interface {
 	Down() error
 	SetName(name string) error
 	Ifconfig(ip net.IP, netmask net.IPMask) error
-	SetToNetNs(nspid int, newName string, ipaddr *net.IPNet) error
-	SetToDockerNs(containerID, newName string, ipaddr *net.IPNet) error
+	SetToNetNs(nspid int, newName string, ip net.IP, mask net.IPMask) error
+	SetToDockerNs(containerID, newName string, ip net.IP, mask net.IPMask) error
 }
 
 // LinuxLink ...
@@ -81,7 +81,7 @@ func DeleteLink(name string) error {
 }
 
 // SetToNetNs is used to put a network interface into netns
-func (lnk *linuxLink) SetToNetNs(nspid int, newName string, ipaddr *net.IPNet) error {
+func (lnk *linuxLink) SetToNetNs(nspid int, newName string, ip net.IP, mask net.IPMask) error {
 	if newName == "" {
 		return fmt.Errorf("The new name cannot be empty")
 	}
@@ -91,10 +91,10 @@ func (lnk *linuxLink) SetToNetNs(nspid int, newName string, ipaddr *net.IPNet) e
 		return fmt.Errorf("Failed to get the net ns for pid %d due to %s", nspid, err.Error())
 	}
 
-	return lnk.putLinkIntoNetNS(newNsHandle, newName, ipaddr)
+	return lnk.putLinkIntoNetNS(newNsHandle, newName, ip, mask)
 }
 
-func (lnk *linuxLink) putLinkIntoNetNS(nsHandle netns.NsHandle, newName string, ipaddr *net.IPNet) error {
+func (lnk *linuxLink) putLinkIntoNetNS(nsHandle netns.NsHandle, newName string, ip net.IP, mask net.IPMask) error {
 	err := lnk.Down()
 	if err != nil {
 		return fmt.Errorf("Failed to put link down due to %s", err.Error())
@@ -120,8 +120,8 @@ func (lnk *linuxLink) putLinkIntoNetNS(nsHandle netns.NsHandle, newName string, 
 		}
 	}
 
-	if ipaddr != nil {
-		err = lnk.Ifconfig(ipaddr.IP, ipaddr.Mask)
+	if ip != nil {
+		err = lnk.Ifconfig(ip, mask)
 		if err != nil {
 			return fmt.Errorf("Failed to configure the links ip due to %s", err.Error())
 		}
