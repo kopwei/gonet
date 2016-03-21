@@ -9,7 +9,7 @@ import (
 
 // SetPeerLinkToDockerNs is used to put the link into containers namespace with specified
 // name
-func (lnk *linuxLink) SetPeerLinkToDockerNs(containerID, newName string, ipaddr *net.IPNet) error {
+func (lnk *linuxLink) SetToDockerNs(containerID, newName string, ipaddr *net.IPNet) error {
 	if containerID == "" {
 		return fmt.Errorf("The container id cannot be empty")
 	}

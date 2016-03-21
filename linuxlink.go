@@ -17,7 +17,7 @@ type LinuxLink interface {
 	SetName(name string) error
 	Ifconfig(ip net.IP, netmask net.IPMask) error
 	SetToNetNs(nspid int, newName string, ipaddr *net.IPNet) error
-	SetPeerLinkToDockerNs(containerID, newName string, ipaddr *net.IPNet) error
+	SetToDockerNs(containerID, newName string, ipaddr *net.IPNet) error
 }
 
 // LinuxLink ...
