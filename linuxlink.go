@@ -1,9 +1,11 @@
 package gonet
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"syscall"
+	"time"
 
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -94,13 +96,14 @@ func (lnk *linuxLink) SetToNetNs(nspid int, newName string, ip net.IP, mask net.
 	return lnk.putLinkIntoNetNS(newNsHandle, newName, ip, mask)
 }
 
+// Warning! This method is not threadsafe!
 func (lnk *linuxLink) putLinkIntoNetNS(nsHandle netns.NsHandle, newName string, ip net.IP, mask net.IPMask) error {
 	err := lnk.Down()
 	if err != nil {
 		return fmt.Errorf("Failed to put link down due to %s", err.Error())
 	}
 	currentNetNs, err := netns.Get()
-	defer netns.Setns(currentNetNs, syscall.CLONE_NEWNET)
+ 	defer netns.Setns(currentNetNs, syscall.CLONE_NEWNET)
 	if err != nil {
 		return fmt.Errorf("Failed to get current net ns due to %s", err.Error())
 	}
@@ -112,19 +115,52 @@ func (lnk *linuxLink) putLinkIntoNetNS(nsHandle netns.NsHandle, newName string, 
 	if err != nil {
 		return fmt.Errorf("Failed to switch to set net ns %d due to %s", nsHandle, err.Error())
 	}
+
 	if newName != lnk.link.Attrs().Name {
-		err = lnk.SetName(newName)
+		// The previous move operation is asynchronous. Retry might be needed.
+		var txt bytes.Buffer
+		txt.WriteString("S")
+		for retry:=0 ; retry!=5 ; retry++ {
+			err = lnk.SetName(newName)
+			if err == nil {
+				break;
+			}
+			txt.WriteString("W")
+			time.Sleep(time.Second)
+		}
 		if err != nil {
-			return fmt.Errorf("Failed to set the link to new name %s due to %s",
-				newName, err.Error())
+			return fmt.Errorf("Failed to set the link to new name %s due to %s '%s'",
+				newName, err.Error(), txt.String())
 		}
 	}
 
 	if ip != nil {
-		err = lnk.Ifconfig(ip, mask)
+		// The previous rename operation is asynchronous. Retry might be needed.
+		for retry:=0 ; retry!=5 ; retry++ {
+			err = lnk.Ifconfig(ip, mask)
+			if err == nil {
+				break;
+			}
+			time.Sleep(time.Second)
+		}
 		if err != nil {
 			return fmt.Errorf("Failed to configure the links ip due to %s", err.Error())
 		}
 	}
-	return lnk.Up()
+	// The previous rename operation is asynchronous. Retry might be needed.
+	var txt bytes.Buffer
+	txt.WriteString("S")
+	for retry:=0 ; retry!=5 ; retry++ {
+		err = lnk.Up()
+		if err == nil {
+			break;
+		}
+		txt.WriteString("W")
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return fmt.Errorf("Failed to set the link up due to %s '%s'",
+			err.Error(), txt.String())
+	}
+	return nil
 }
