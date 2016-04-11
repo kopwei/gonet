@@ -7,7 +7,7 @@
 	"Deps": [
 		{
 			"ImportPath": "github.com/vishvananda/netlink",
-			"Rev": "adb0f53af689dd38f1443eba79489feaacf0b22e"
+			"Rev": "a632d6dc2806fa19d2f7693017d3fb79d3d8fa03"
 		},
 		{
 			"ImportPath": "github.com/vishvananda/netns",
