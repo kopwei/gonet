@@ -6,12 +6,16 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/kopwei/netns",
+			"Rev": "0e0a6fd89340155abcde0d9df8e9863a70588fbd"
+		},
+		{
 			"ImportPath": "github.com/vishvananda/netlink",
 			"Rev": "a632d6dc2806fa19d2f7693017d3fb79d3d8fa03"
 		},
 		{
-			"ImportPath": "github.com/vishvananda/netns",
-			"Rev": "1fec6582c067519857603311ad090e23a5ca57de"
+			"ImportPath": "github.com/vishvananda/netlink/nl",
+			"Rev": "a632d6dc2806fa19d2f7693017d3fb79d3d8fa03"
 		}
 	]
 }
