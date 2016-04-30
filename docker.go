@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/kopwei/netns"
+	"github.com/vishvananda/netns"
 )
 
 // SetPeerLinkToDockerNs is used to put the link into containers namespace with specified

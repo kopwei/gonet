@@ -6,7 +6,7 @@ import (
 	"syscall"
 
 	"github.com/vishvananda/netlink"
-	"github.com/kopwei/netns"
+	"github.com/vishvananda/netns"
 )
 
 // LinuxLink is the main interface towards the outside
