@@ -28,6 +28,23 @@ type linuxLink struct {
 	//ifc  *net.Interface
 }
 
+// Link operations watchdog
+func WaitForLink(ch <-chan netlink.LinkUpdate, ifaceName string, Flags uint32) int {
+	for {
+		timeout := time.After(time.Minute)
+		select {
+		case update := <-ch:
+			if ifaceName == update.Link.Attrs().Name {
+                if (Flags <= 0) || (Flags & update.IfInfomsg.Flags != 0) {
+                    return update.Link.Attrs().Index
+                }
+			}
+		case <-timeout:
+			return 0
+		}
+	}
+}
+
 // Up is used to set the link to up state
 func (lnk *linuxLink) Up() error {
 	return netlink.LinkSetUp(lnk.link)
@@ -99,11 +116,12 @@ func (lnk *linuxLink) SetToNetNs(nspid int, newName string, ip net.IP, mask net.
 // Warning! This method is not threadsafe!
 func (lnk *linuxLink) putLinkIntoNetNS(nsHandle netns.NsHandle, newName string, ip net.IP, mask net.IPMask) error {
 	err := lnk.Down()
+
 	if err != nil {
 		return fmt.Errorf("Failed to put link down due to %s", err.Error())
 	}
 	currentNetNs, err := netns.Get()
- 	defer netns.Setns(currentNetNs, syscall.CLONE_NEWNET)
+    defer netns.Setns(currentNetNs, syscall.CLONE_NEWNET)
 	if err != nil {
 		return fmt.Errorf("Failed to get current net ns due to %s", err.Error())
 	}
@@ -116,51 +134,32 @@ func (lnk *linuxLink) putLinkIntoNetNS(nsHandle netns.NsHandle, newName string, 
 		return fmt.Errorf("Failed to switch to set net ns %d due to %s", nsHandle, err.Error())
 	}
 
+    chnl := make(chan netlink.LinkUpdate)
+    done := make(chan struct{})
+    defer close(done)
+    defer close(chnl)
+
+    if err := netlink.LinkSubscribe(chnl, done); err != nil {
+        return fmt.Errorf("Failed to create ns watchdog channel for %s", newName)
+    }
+    if idx := WaitForLink(chnl, newName, 0); idx == 0 {
+        return fmt.Errorf("Timeout waiting link %s", newName)
+    }
+
 	if newName != lnk.link.Attrs().Name {
-		// The previous move operation is asynchronous. Retry might be needed.
-		var txt bytes.Buffer
-		txt.WriteString("S")
-		for retry:=0 ; retry!=5 ; retry++ {
-			err = lnk.SetName(newName)
-			if err == nil {
-				break;
-			}
-			txt.WriteString("W")
-			time.Sleep(time.Second)
-		}
-		if err != nil {
-			return fmt.Errorf("Failed to set the link to new name %s due to %s '%s'",
-				newName, err.Error(), txt.String())
-		}
+        return fmt.Errorf("Error renaming link %s to %s",
+                          lnk.link.Attrs().Name,
+                          newName)
 	}
 
 	if ip != nil {
-		// The previous rename operation is asynchronous. Retry might be needed.
-		for retry:=0 ; retry!=5 ; retry++ {
-			err = lnk.Ifconfig(ip, mask)
-			if err == nil {
-				break;
-			}
-			time.Sleep(time.Second)
-		}
-		if err != nil {
-			return fmt.Errorf("Failed to configure the links ip due to %s", err.Error())
+        if err := lnk.Ifconfig(ip, mask); err != nil {
+			return fmt.Errorf("Failed to configure address on %s", newName)
 		}
 	}
-	// The previous rename operation is asynchronous. Retry might be needed.
-	var txt bytes.Buffer
-	txt.WriteString("S")
-	for retry:=0 ; retry!=5 ; retry++ {
-		err = lnk.Up()
-		if err == nil {
-			break;
-		}
-		txt.WriteString("W")
-		time.Sleep(time.Second)
-	}
-	if err != nil {
-		return fmt.Errorf("Failed to set the link up due to %s '%s'",
-			err.Error(), txt.String())
-	}
+
+    if idx := WaitForLink(chnl, newName, 1); idx == 0 {
+        return fmt.Errorf("Timeout waiting link %s up", newName)
+    }
 	return nil
 }
