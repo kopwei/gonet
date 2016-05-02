@@ -19,9 +19,19 @@ type vethLinkPair struct {
 
 // NewVethLinkPair ...
 func NewVethLinkPair(ifcName, peerName string) (VethLinkPair, error) {
+    chnl := make(chan netlink.LinkUpdate)
+    done := make(chan struct{})
 	linkAttr := netlink.LinkAttrs{Name: ifcName}
 	vethLink := netlink.Veth{LinkAttrs: linkAttr, PeerName: peerName}
+    defer close(done)
+    defer close(chnl)
+    if err := netlink.LinkSubscribe(chnl, done); err != nil {
+        return nil, fmt.Errorf("Failed to create watchdog channel for %s", ifcName)
+    }
 	err := netlink.LinkAdd(&vethLink)
+    if idx := WaitForLink(chnl, ifcName, 0); idx == 0 {
+        return nil, fmt.Errorf("Timeout waiting link %s", ifcName)
+    }
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create veth link %s and %s due to %s",
 			ifcName, peerName, err.Error())
