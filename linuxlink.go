@@ -100,10 +100,10 @@ func (lnk *linuxLink) putLinkIntoNetNS(nsHandle netns.NsHandle, newName string, 
 		return fmt.Errorf("Failed to put link down due to %s", err.Error())
 	}
 	currentNetNs, err := netns.Get()
-	defer netns.Setns(currentNetNs, syscall.CLONE_NEWNET)
 	if err != nil {
 		return fmt.Errorf("Failed to get current net ns due to %s", err.Error())
 	}
+	defer netns.Setns(currentNetNs, syscall.CLONE_NEWNET)
 	err = netlink.LinkSetNsFd(lnk.link, int(nsHandle))
 	if err != nil {
 		return fmt.Errorf("Failed to set net ns %d due to %s", nsHandle, err.Error())
